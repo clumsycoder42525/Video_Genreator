@@ -87,10 +87,10 @@ def get_premium_font(size: int):
                 continue
     return ImageFont.load_default()
 
-def create_gradient_image(filename: str, color1: Tuple[int, int, int], color2: Tuple[int, int, int], text: str, width: int = 1920, height: int = 1080):
+def create_gradient_image(filename: str, color1: Tuple[int, int, int], color2: Tuple[int, int, int], text: str, width: int = 1280, height: int = 720):
     """
-    Generates a premium visual asset (1080p full HD gradient) with styled typography
-    so the pipeline is fully executable out-of-the-box without requiring manual image uploads.
+    Generates a premium visual asset (720p HD gradient) with styled typography
+    optimized for low-RAM server rendering.
     """
     image = Image.new("RGB", (width, height))
     draw = ImageDraw.Draw(image)
@@ -115,12 +115,12 @@ def create_gradient_image(filename: str, color1: Tuple[int, int, int], color2: T
         draw.ellipse([x-radius, y-radius, x+radius, y+radius], fill=(255, 255, 255, 25))
 
     # Add text overlay
-    font = get_premium_font(55)
+    font = get_premium_font(42)  # Adjusted slightly for 720p
     
     # Draw dark shadow behind text
-    draw.text((width // 2 - 300 + 4, height // 2 - 50 + 4), text, fill=(0, 0, 0, 150), font=font)
+    draw.text((width // 2 - 300 + 4, height // 2 - 30 + 4), text, fill=(0, 0, 0, 150), font=font)
     # Draw primary text
-    draw.text((width // 2 - 300, height // 2 - 50), text, fill=(255, 255, 255), font=font)
+    draw.text((width // 2 - 300, height // 2 - 30), text, fill=(255, 255, 255), font=font)
     
     path = os.path.join("assets", filename)
     image.save(path, "JPEG", quality=95)
@@ -134,10 +134,21 @@ PRESET_IMAGES = [
     {"id": "img3", "filename": "img3.jpg", "color1": (252, 74, 26), "color2": (247, 177, 114), "text": "CREATIVE COGNITION ENGINE", "desc": "Conceptual abstract thought"}
 ]
 
+# Ensure old 1080p images are replaced with optimized 720p versions
 for img in PRESET_IMAGES:
     full_path = os.path.join("assets", img["filename"])
+    if os.path.exists(full_path):
+        try:
+            with Image.open(full_path) as im:
+                if im.size != (1280, 720):
+                    os.remove(full_path)
+                    logger.info(f"Removing old high-res preset image to optimize: {full_path}")
+        except Exception as e:
+            logger.warning(f"Error checking preset image: {e}")
+            
     if not os.path.exists(full_path):
         create_gradient_image(img["filename"], img["color1"], img["color2"], img["text"])
+
 
 # ====================================================
 # 3. Pydantic Models
@@ -560,8 +571,8 @@ class VideoRenderer:
                 fps=self.fps,
                 codec="libx264",
                 audio=False, # strict silence
-                preset="medium",
-                threads=4,
+                preset="ultrafast",
+                threads=1,
                 logger=None
             )
             
@@ -623,6 +634,8 @@ class FFmpegMerger:
                     output_path,
                     codec="libx264",
                     audio_codec="aac",
+                    preset="ultrafast",
+                    threads=1,
                     logger=None
                 )
                 video_clip.close()
@@ -755,7 +768,14 @@ def create_gradio_ui():
                 img_id = f"img{i+1}"
                 ext = os.path.splitext(f_path)[1] or ".jpg"
                 save_path = os.path.join("assets", f"uploaded_{img_id}{ext}")
-                shutil.copy(f_path, save_path)
+                try:
+                    # Open, resize, and save to prevent high RAM usage during rendering
+                    with Image.open(f_path) as img:
+                        img.thumbnail((1280, 720))
+                        img.convert("RGB").save(save_path, "JPEG", quality=90)
+                except Exception as resize_err:
+                    logger.warning(f"Failed to resize uploaded image: {resize_err}. Using original copy.")
+                    shutil.copy(f_path, save_path)
                 
                 images.append(ImageMeta(
                     id=img_id,
@@ -1046,8 +1066,11 @@ def run_automated_tests():
 # ====================================================
 if __name__ == "__main__":
     # If run directly via: python app.py
-    # 1. Run tests automatically to guarantee correctness
-    run_automated_tests()
+    # 1. Run tests automatically to guarantee correctness, but bypass on Render to save RAM at startup
+    if not os.environ.get("RENDER"):
+        run_automated_tests()
+    else:
+        logger.info("Running on Render: Bypassing startup integration tests to save RAM.")
     
     # 2. Spin up Gradio Interface UI
     logger.info("Launching local Gradio Studio UI...")
