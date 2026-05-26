@@ -1052,4 +1052,7 @@ if __name__ == "__main__":
     # 2. Spin up Gradio Interface UI
     logger.info("Launching local Gradio Studio UI...")
     ui = create_gradio_ui()
-    ui.launch(debug=True)
+    
+    # Read the dynamic port assigned by Render, defaulting to 7860 if local
+    port = int(os.environ.get("PORT", 7860))
+    ui.launch(server_name="0.0.0.0", server_port=port, debug=True)
