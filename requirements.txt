@@ -1,0 +1,11 @@
+moviepy>=1.0.3
+gTTS
+pillow
+numpy
+groq
+pydantic>=2.0.0
+fastapi
+uvicorn
+gradio
+soundfile
+kokoro
